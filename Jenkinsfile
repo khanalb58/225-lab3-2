@@ -1,12 +1,11 @@
 pipeline {
-    agent any 
+    agent any
 
     environment {
         DOCKER_CREDENTIALS_ID = 'roseaw-dockerhub'
-        DOCKER_IMAGE = 'cithit/khanalb'                                                 // <------change this
-        IMAGE_TAG = "build-${BUILD_NUMBER}"
-        GITHUB_URL = 'https://github.com/khanalb58/225-lab3-2.git'                   // <------change this
-        KUBECONFIG = credentials('khanalb-225')                                             // <------change this
+        DOCKER_IMAGE = 'cithit/khanalb'
+        IMAGE_TAG = "latest"
+        GITHUB_URL = 'https://github.com/khanalb58/225-lab3-2.git'
     }
 
     stages {
@@ -16,7 +15,6 @@ pipeline {
                           userRemoteConfigs: [[url: "${GITHUB_URL}"]]])
             }
         }
-
         stage('Build Docker Image') {
             steps {
                 script {
@@ -24,7 +22,6 @@ pipeline {
                 }
             }
         }
-
         stage('Push Docker Image') {
             steps {
                 script {
@@ -34,36 +31,38 @@ pipeline {
                 }
             }
         }
-
         stage('Deploy to Dev Environment using NodePort') {
             steps {
                 script {
-                    // Set up Kubernetes configuration using the specified KUBECONFIG
-                    def kubeConfig = readFile(KUBECONFIG)
-                    // Update deployment-dev.yaml to use the new image tag
-                    sh "sed -i 's|${DOCKER_IMAGE}:latest|${DOCKER_IMAGE}:${IMAGE_TAG}|' deployment-dev.yaml"
-                    sh "kubectl apply -f deployment-dev.yaml"
+                    withCredentials([file(credentialsId: 'roseaw-225', variable: 'KUBECONFIG')]) {
+                        sh "sed -i 's|${DOCKER_IMAGE}:latest|${DOCKER_IMAGE}:${IMAGE_TAG}|' deployment-dev.yaml"
+                        sh "kubectl apply -f deployment-dev.yaml"
+                    }
                 }
             }
         }
- 
         stage('Check Kubernetes Cluster') {
             steps {
                 script {
-                    sh "kubectl get all"
+                    withCredentials([file(credentialsId: 'roseaw-225', variable: 'KUBECONFIG')]) {
+                        sh "kubectl get all"
+                    }
                 }
             }
         }
     }
     post {
-        success {
-            slackSend([color: "good", message: "Build Completed: ${env.JOB_NAME} ${env.BUILD_NUMBER}"])
-        }
-        unstable {
-            slackSend([color: "warning", message: "Build Completed: ${env.JOB_NAME} ${env.BUILD_NUMBER}"])
-        }
-        failure {
-            slackSend([color: "danger", message: "Build Completed: ${env.JOB_NAME} ${env.BUILD_NUMBER}"])
+    success {
+        slackSend(channel: '#builds', color: "good",
+                  message: "Build SUCCESS: ${env.JOB_NAME} ${env.BUILD_NUMBER}")
+    }
+    unstable {
+        slackSend(channel: '#builds', color: "warning",
+                  message: "Build UNSTABLE: ${env.JOB_NAME} ${env.BUILD_NUMBER}")
+    }
+    failure {
+        slackSend(channel: '#builds', color: "danger",
+                  message: "Build FAILED: ${env.JOB_NAME} ${env.BUILD_NUMBER}")
     }
 }
 }
